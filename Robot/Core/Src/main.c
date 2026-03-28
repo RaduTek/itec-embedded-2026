@@ -132,6 +132,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  motor_tick();
+	  motor_auto_tick();  // autonomous decision making
     /* USER CODE BEGIN 3 */
     
     // Print distances every second

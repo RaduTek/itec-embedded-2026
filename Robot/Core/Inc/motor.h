@@ -27,26 +27,27 @@ void motor_init(TIM_HandleTypeDef* tim3);
 void motor_set_m1(MotorDirection_t direction, uint16_t speed);
 void motor_set_m2(MotorDirection_t direction, uint16_t speed);
 
-/* High-level control functions */
+/* High-level continuous control functions */
 void motor_forward(uint16_t speed);
 void motor_backward(uint16_t speed);
 void motor_turn_left(uint16_t speed);
 void motor_turn_right(uint16_t speed);
 void motor_stop(void);
 
-/* Timed move functions (non-blocking, call motor_tick() in main loop) */
+/* Timed move functions (non-blocking) */
 void motor_forward_1cell(uint16_t speed);
 void motor_backward_1cell(uint16_t speed);
 void motor_turn_left_90(uint16_t speed);
 void motor_turn_right_90(uint16_t speed);
 
-/* Call this every iteration of your main loop */
+/* Call both of these every iteration of your main loop */
 void motor_tick(void);
+void motor_auto_tick(void);   /* autonomous logic, uses sonar readings */
 
-/* Returns 1 if a timed move is still in progress */
 uint8_t motor_is_busy(void);
+uint8_t motor_auto_is_on(void);
 
-/* USART remote control */
+/* USART remote control — 'p'/'P' toggles autonomous mode */
 void motor_usart_command(uint8_t cmd);
 
 #endif /* __MOTOR_H */
