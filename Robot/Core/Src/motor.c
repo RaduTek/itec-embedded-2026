@@ -1,5 +1,12 @@
 #include "motor.h"
 
+#define MOTOR_PWM_MAX  65535U
+
+static inline uint16_t percent_speed(uint8_t percent)
+{
+    return (uint16_t)((uint32_t)percent * MOTOR_PWM_MAX / 100U);
+}
+
 static Motor_t m1, m2;
 static TIM_HandleTypeDef* tim_ptr;
 
@@ -82,7 +89,7 @@ void motor_forward_1cell(uint16_t speed)
 {
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
-  HAL_Delay(500);  // Move forward for 500ms (adjust as needed)
+  HAL_Delay(250);  // Move forward for 500ms (adjust as needed)
   motor_stop();
 }
 
@@ -90,7 +97,7 @@ void motor_backward_1cell(uint16_t speed)
 {
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
-  HAL_Delay(500);  // Move backward for 500ms (adjust as needed)
+  HAL_Delay(250);  // Move backward for 500ms (adjust as needed)
   motor_stop();
 }
 
@@ -99,7 +106,7 @@ void motor_turn_left_90(uint16_t speed)
   /* Left wheel backward, right wheel forward for CCW rotation */
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
-  HAL_Delay(300);  // Rotate for 300ms (adjust as needed for 90 degrees)
+  HAL_Delay(100);  // Rotate for 300ms (adjust as needed for 90 degrees)
   motor_stop();
 }
 
@@ -108,7 +115,7 @@ void motor_turn_right_90(uint16_t speed)
   /* Left wheel forward, right wheel backward for CW rotation */
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
-  HAL_Delay(300);  // Rotate for 300ms (adjust as needed for 90 degrees)
+  HAL_Delay(100);  // Rotate for 300ms (adjust as needed for 90 degrees)
   motor_stop();
 }
 
@@ -143,11 +150,11 @@ void motor_stop(void)
   motor_set_m1(MOTOR_STOP, 0);
   motor_set_m2(MOTOR_STOP, 0);
 }
-
 void motor_usart_command(uint8_t cmd)
 {
-  uint16_t speed = 40000;  /* ~60% speed for smooth control */
-
+  uint16_t speed      = percent_speed(60);  /* ~60% speed for forward/backward */
+  uint16_t turn_speed = percent_speed(38);  /* ~38% speed for turns (softer cornering) */
+ 
   switch(cmd) {
     case 'w':
     case 'W':
@@ -159,11 +166,11 @@ void motor_usart_command(uint8_t cmd)
       break;
     case 'a':
     case 'A':
-      motor_turn_left(speed);
+      motor_turn_left(turn_speed);
       break;
     case 'd':
     case 'D':
-      motor_turn_right(speed);
+      motor_turn_right(turn_speed);
       break;
     case 'x':
     case 'X':
@@ -175,15 +182,15 @@ void motor_usart_command(uint8_t cmd)
       break;
     case 'f':
     case 'F':
-      motor_turn_left_90(speed);
+      motor_turn_left_90(turn_speed);
       break;
     case 'g':
     case 'G':
-      motor_turn_right_90(speed);
+      motor_backward_1cell(speed);
       break;
     case 'h':
     case 'H':
-      motor_backward_1cell(speed);
+      motor_turn_right_90(turn_speed);
       break;
     default:
       break;
