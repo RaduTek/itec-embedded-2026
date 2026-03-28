@@ -78,6 +78,40 @@ void motor_set_m2(MotorDirection_t direction, uint16_t speed)
   __HAL_TIM_SET_COMPARE(m2.timer, m2.channel, speed);
 }
 
+void motor_forward_1cell(uint16_t speed)
+{
+  motor_set_m1(MOTOR_FORWARD, speed);
+  motor_set_m2(MOTOR_FORWARD, speed);
+  HAL_Delay(500);  // Move forward for 500ms (adjust as needed)
+  motor_stop();
+}
+
+void motor_backward_1cell(uint16_t speed)
+{
+  motor_set_m1(MOTOR_BACKWARD, speed);
+  motor_set_m2(MOTOR_BACKWARD, speed);
+  HAL_Delay(500);  // Move backward for 500ms (adjust as needed)
+  motor_stop();
+}
+
+void motor_turn_left_90(uint16_t speed)
+{
+  /* Left wheel backward, right wheel forward for CCW rotation */
+  motor_set_m1(MOTOR_BACKWARD, speed);
+  motor_set_m2(MOTOR_FORWARD, speed);
+  HAL_Delay(300);  // Rotate for 300ms (adjust as needed for 90 degrees)
+  motor_stop();
+}
+
+void motor_turn_right_90(uint16_t speed)
+{
+  /* Left wheel forward, right wheel backward for CW rotation */
+  motor_set_m1(MOTOR_FORWARD, speed);
+  motor_set_m2(MOTOR_BACKWARD, speed);
+  HAL_Delay(300);  // Rotate for 300ms (adjust as needed for 90 degrees)
+  motor_stop();
+}
+
 void motor_forward(uint16_t speed)
 {
   motor_set_m1(MOTOR_FORWARD, speed);
@@ -134,6 +168,22 @@ void motor_usart_command(uint8_t cmd)
     case 'x':
     case 'X':
       motor_stop();
+      break;
+    case 't':
+    case 'T':
+      motor_forward_1cell(speed);
+      break;
+    case 'f':
+    case 'F':
+      motor_turn_left_90(speed);
+      break;
+    case 'g':
+    case 'G':
+      motor_turn_right_90(speed);
+      break;
+    case 'h':
+    case 'H':
+      motor_backward_1cell(speed);
       break;
     default:
       break;
