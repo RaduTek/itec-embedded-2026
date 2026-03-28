@@ -89,7 +89,6 @@ void motor_forward_1cell(uint16_t speed)
 {
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
-  HAL_Delay(250);  // Move forward for 500ms (adjust as needed)
   motor_stop();
 }
 
@@ -97,7 +96,6 @@ void motor_backward_1cell(uint16_t speed)
 {
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
-  HAL_Delay(250);  // Move backward for 500ms (adjust as needed)
   motor_stop();
 }
 
@@ -106,7 +104,6 @@ void motor_turn_left_90(uint16_t speed)
   /* Left wheel backward, right wheel forward for CCW rotation */
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
-  HAL_Delay(100);  // Rotate for 300ms (adjust as needed for 90 degrees)
   motor_stop();
 }
 
@@ -115,7 +112,6 @@ void motor_turn_right_90(uint16_t speed)
   /* Left wheel forward, right wheel backward for CW rotation */
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
-  HAL_Delay(100);  // Rotate for 300ms (adjust as needed for 90 degrees)
   motor_stop();
 }
 
@@ -152,8 +148,8 @@ void motor_stop(void)
 }
 void motor_usart_command(uint8_t cmd)
 {
-  uint16_t speed      = percent_speed(60);  /* ~60% speed for forward/backward */
-  uint16_t turn_speed = percent_speed(38);  /* ~38% speed for turns (softer cornering) */
+  uint16_t speed      = percent_speed(45);  /* ~60% speed for forward/backward */
+  uint16_t turn_speed = percent_speed(32);  /* ~38% speed for turns (softer cornering) */
  
   switch(cmd) {
     case 'w':
