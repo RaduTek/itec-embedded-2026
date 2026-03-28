@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "sonar.h"
+#include "motor.h"
 
 /* USER CODE END Includes */
 
@@ -47,11 +48,13 @@ I2S_HandleTypeDef hi2s3;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 volatile uint32_t sonar_print_counter = 0;
+volatile uint8_t cmd_buffer = 0;
 
 /* USER CODE END PV */
 
@@ -62,6 +65,7 @@ static void MX_I2S3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -105,10 +109,20 @@ int main(void)
   MX_TIM3_Init();
   MX_USART2_UART_Init();
   MX_USB_DEVICE_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+
+  // Initialize motor control
+  motor_init(&htim3);
 
   // Initialize sonar driver with TIM2
   sonar_init(GPIOE, TRIG_Pin, &htim2);
+
+  // Start TIM4 to trigger sonar measurements periodically
+  HAL_TIM_Base_Start_IT(&htim4);
+
+  // Enable UART receive interrupt for remote control
+  HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
 
   /* USER CODE END 2 */
 
@@ -120,28 +134,23 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     
-    // Trigger sonar measurement
-    sonar_trigger();
-    
-    // Wait for echo to complete (~50ms max for 4 meters)
-    HAL_Delay(50);
-    
-    // Calculate distances
-    uint16_t dist0 = sonar_get_distance(0);
-    uint16_t dist1 = sonar_get_distance(1);
-    uint16_t dist2 = sonar_get_distance(2);
-    uint16_t dist3 = sonar_get_distance(3);
-    
-    // Print distances every second (every 20 cycles of 50ms = 1000ms)
+    // Print distances every second
     sonar_print_counter++;
-    if (sonar_print_counter >= 20) {
+    if (sonar_print_counter >= 10) {
       sonar_print_counter = 0;
+      
+      uint16_t dist0 = sonar_get_distance(0);
+      uint16_t dist1 = sonar_get_distance(1);
+      uint16_t dist2 = sonar_get_distance(2);
+      uint16_t dist3 = sonar_get_distance(3);
       
       uint8_t msg[64];
       int len = sprintf((char*)msg, "Sonar: F=%dcm B=%dcm L=%dcm R=%dcm\r\n", 
         dist0, dist1, dist2, dist3);
       HAL_UART_Transmit(&huart2, msg, len, HAL_MAX_DELAY);
     }
+    
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
@@ -290,9 +299,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 100;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 84-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -330,6 +339,51 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 84-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 100000-1;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -501,10 +555,25 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
 
+  /* Enable TIM4 interrupt for sonar triggering */
+  HAL_NVIC_EnableIRQ(TIM4_IRQn);
+  HAL_NVIC_SetPriority(TIM4_IRQn, 1, 0);
+
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+  * @brief UART receive complete callback
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2) {
+    motor_usart_command(cmd_buffer);
+    HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
+  }
+}
 
 /* USER CODE END 4 */
 

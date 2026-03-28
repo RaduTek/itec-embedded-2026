@@ -57,8 +57,10 @@
 
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
+extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 extern UART_HandleTypeDef huart2;
+extern TIM_HandleTypeDef htim4;
 
 /* USER CODE END EV */
 
@@ -201,6 +203,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles USART2 global interrupt.
+  */
+void USART2_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART2_IRQn 0 */
+
+  /* USER CODE END USART2_IRQn 0 */
+  HAL_UART_IRQHandler(&huart2);
+  /* USER CODE BEGIN USART2_IRQn 1 */
+
+  /* USER CODE END USART2_IRQn 1 */
+}
+
+/**
   * @brief This function handles USB On The Go FS global interrupt.
   */
 void OTG_FS_IRQHandler(void)
@@ -266,6 +282,15 @@ void EXTI15_10_IRQHandler(void)
     uint8_t edge = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_14);
     sonar_echo_callback(1, edge);
   }
+}
+
+/**
+  * @brief This function handles TIM4 global interrupt (Sonar trigger).
+  */
+void TIM4_IRQHandler(void)
+{
+  __HAL_TIM_CLEAR_IT(&htim4, TIM_IT_UPDATE);
+  sonar_trigger();
 }
 
 /* USER CODE END 1 */
