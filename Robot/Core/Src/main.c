@@ -131,7 +131,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+	  motor_tick();
     /* USER CODE BEGIN 3 */
     
     // Print distances every second

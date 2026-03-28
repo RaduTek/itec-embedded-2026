@@ -34,6 +34,18 @@ void motor_turn_left(uint16_t speed);
 void motor_turn_right(uint16_t speed);
 void motor_stop(void);
 
+/* Timed move functions (non-blocking, call motor_tick() in main loop) */
+void motor_forward_1cell(uint16_t speed);
+void motor_backward_1cell(uint16_t speed);
+void motor_turn_left_90(uint16_t speed);
+void motor_turn_right_90(uint16_t speed);
+
+/* Call this every iteration of your main loop */
+void motor_tick(void);
+
+/* Returns 1 if a timed move is still in progress */
+uint8_t motor_is_busy(void);
+
 /* USART remote control */
 void motor_usart_command(uint8_t cmd);
 
