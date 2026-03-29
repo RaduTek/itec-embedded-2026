@@ -11,5 +11,8 @@ void maze_map_manual_reset(void);
 uint8_t maze_map_manual_scan_next(void);
 uint8_t maze_map_manual_is_done(void);
 uint16_t maze_map_manual_export_text(char* out, uint16_t out_size);
+void maze_map_manual_move(uint8_t cmd);
+void maze_map_manual_print_status(void);
+void maze_map_manual_print_map(void);
 
 #endif /* __MAZE_MAP_MANUAL_H__ */

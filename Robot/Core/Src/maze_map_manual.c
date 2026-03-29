@@ -20,7 +20,12 @@
 
 static UART_HandleTypeDef* g_uart = NULL;
 static uint8_t g_maze[MAZE_MANUAL_SIZE][MAZE_MANUAL_SIZE];
-static uint8_t g_scan_index = 0U; /* 0..99 */
+static uint8_t g_scan_index = 0U; /* total scans performed */
+static uint8_t g_current_x = 0U;
+static uint8_t g_current_y = 0U;
+static uint8_t g_prev_x = 0U;
+static uint8_t g_prev_y = 0U;
+static uint8_t g_heading = 0U; /* 0=N,1=E,2=S,3=W */
 
 static void uart_print(const char* text)
 {
@@ -63,6 +68,46 @@ static void map_current_cell(uint8_t x, uint8_t y)
 	if ((x == 0U) || (d_left <= WALL_THRESHOLD_CM)) set_wall_with_neighbor(x, y, WALL_WEST);
 }
 
+void maze_map_manual_move(uint8_t cmd)
+{
+	char msg[96];
+	const char* heading_name;
+	const char* movement = "UNKNOWN";
+
+	switch (g_heading) {
+		case 0: heading_name = "NORTH"; break;
+		case 1: heading_name = "EAST"; break;
+		case 2: heading_name = "SOUTH"; break;
+		case 3: heading_name = "WEST"; break;
+		default: heading_name = "UNKNOWN"; break;
+	}
+
+	if (cmd == 'w' || cmd == 'W') {
+		movement = "FORWARD";
+		if (g_heading == 0 && g_current_y > 0) g_current_y--;
+		else if (g_heading == 1 && (g_current_x < MAZE_MANUAL_SIZE - 1U)) g_current_x++;
+		else if (g_heading == 2 && (g_current_y < MAZE_MANUAL_SIZE - 1U)) g_current_y++;
+		else if (g_heading == 3 && g_current_x > 0) g_current_x--;
+	} else if (cmd == 's' || cmd == 'S') {
+		movement = "BACKWARD";
+		if (g_heading == 0 && (g_current_y < MAZE_MANUAL_SIZE - 1U)) g_current_y++;
+		else if (g_heading == 1 && g_current_x > 0) g_current_x--;
+		else if (g_heading == 2 && g_current_y > 0) g_current_y--;
+		else if (g_heading == 3 && (g_current_x < MAZE_MANUAL_SIZE - 1U)) g_current_x++;
+	} else if (cmd == 'a' || cmd == 'A') {
+		movement = "TURN_LEFT";
+		g_heading = (uint8_t)((g_heading + 3U) & 0x3U);
+	} else if (cmd == 'd' || cmd == 'D') {
+		movement = "TURN_RIGHT";
+		g_heading = (uint8_t)((g_heading + 1U) & 0x3U);
+	} else {
+		return;
+	}
+
+	(void)snprintf(msg, sizeof(msg), "MOVE: %s, pos=(%u,%u), heading=%s\r\n", movement, g_current_x, g_current_y, heading_name);
+	uart_print(msg);
+}
+
 void maze_map_manual_init(UART_HandleTypeDef* huart)
 {
 	g_uart = huart;
@@ -73,7 +118,12 @@ void maze_map_manual_reset(void)
 {
 	memset(g_maze, 0, sizeof(g_maze));
 	g_scan_index = 0U;
-	uart_print("\r\nManual maze mapping reset. Next cell: (0,0)\r\n");
+	g_current_x = 0U;
+	g_current_y = 0U;
+	g_prev_x = 0U;
+	g_prev_y = 0U;
+	g_heading = 0U; /* North */
+	uart_print("\r\nManual maze mapping reset. Position (0,0), heading NORTH\r\n");
 }
 
 uint8_t maze_map_manual_is_done(void)
@@ -127,16 +177,36 @@ uint8_t maze_map_manual_scan_next(void)
 		return 0U;
 	}
 
-	/* Requested sequence:
-	 * 0:(0,0), 1:(0,1), ... 9:(0,9), 10:(1,0), ... 99:(9,9)
-	 */
-	x = (uint8_t)(g_scan_index / MAZE_MANUAL_SIZE);
-	y = (uint8_t)(g_scan_index % MAZE_MANUAL_SIZE);
+	/* Position is kept in current_x/current_y and based on move direction. */
+	x = g_current_x;
+	y = g_current_y;
+
+	if (g_scan_index == 0) {
+		uart_print("From start: (0,0)\r\n");
+	} else {
+		(void)snprintf(msg, sizeof(msg), "From previous cell: (%u,%u)\r\n", g_prev_x, g_prev_y);
+		uart_print(msg);
+		const char* heading_name;
+		switch (g_heading) {
+			case 0: heading_name = "NORTH"; break;
+			case 1: heading_name = "EAST"; break;
+			case 2: heading_name = "SOUTH"; break;
+			case 3: heading_name = "WEST"; break;
+			default: heading_name = "UNKNOWN"; break;
+		}
+		(void)snprintf(msg, sizeof(msg), "Current position (%u,%u), heading %s\r\n", x, y, heading_name);
+		uart_print(msg);
+	}
 
 	map_current_cell(x, y);
+	/* mark visited so map export is non-zero when paths are explored */
+	g_maze[y][x] |= 0x10;
 
-	(void)snprintf(msg, sizeof(msg), "Mapped cell (%u,%u) = %u\r\n", x, y, g_maze[y][x]);
+	(void)snprintf(msg, sizeof(msg), "Mapped cell (%u,%u) = %u (walls=%u, visited=1)\r\n", x, y, g_maze[y][x], g_maze[y][x] & 0x0F);
 	uart_print(msg);
+
+	g_prev_x = x;
+	g_prev_y = y;
 
 	g_scan_index++;
 
@@ -155,3 +225,29 @@ uint8_t maze_map_manual_scan_next(void)
 
 	return 1U;
 }
+
+void maze_map_manual_print_status(void)
+{
+	char msg[128];
+	if (maze_map_manual_is_done()) {
+		uart_print("Manual mapping done. All cells mapped (0,0..9,9).\r\n");
+	} else {
+		uint8_t x = (uint8_t)(g_scan_index / MAZE_MANUAL_SIZE);
+		uint8_t y = (uint8_t)(g_scan_index % MAZE_MANUAL_SIZE);
+		(void)snprintf(msg, sizeof(msg), "Manual mapping next: (%u,%u)  (mapped %u/100)\r\n", x, y, g_scan_index);
+		uart_print(msg);
+	}
+}
+
+void maze_map_manual_print_map(void)
+{
+	char text[512];
+	uint16_t len;
+	maze_map_manual_print_status();
+	uart_print("\r\nMANUAL_MAZE_MAP_SNAPSHOT_BEGIN\r\n");
+	len = maze_map_manual_export_text(text, (uint16_t)sizeof(text));
+	(void)len;
+	uart_print(text);
+	uart_print("MANUAL_MAZE_MAP_SNAPSHOT_END\r\n");
+}
+

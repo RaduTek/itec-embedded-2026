@@ -579,6 +579,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       maze_map_manual_scan_next();
     } else if (cmd_buffer == 'r' || cmd_buffer == 'R') {
       maze_map_manual_reset();
+    } else if (cmd_buffer == 'x' || cmd_buffer == 'X') {
+      maze_map_manual_print_map();
+    } else if (cmd_buffer == 'w' || cmd_buffer == 'W' ||
+               cmd_buffer == 's' || cmd_buffer == 'S' ||
+               cmd_buffer == 'a' || cmd_buffer == 'A' ||
+               cmd_buffer == 'd' || cmd_buffer == 'D') {
+      maze_map_manual_move(cmd_buffer);
+      motor_usart_command(cmd_buffer);
     } else {
       motor_usart_command(cmd_buffer);
     }

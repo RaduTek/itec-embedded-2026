@@ -38,6 +38,8 @@ static UART_HandleTypeDef* map_uart = NULL;
 
 static uint8_t maze[MAZE_MAP_SIZE][MAZE_MAP_SIZE];
 static uint8_t visited[MAZE_MAP_SIZE][MAZE_MAP_SIZE];
+static uint8_t visit_order[MAZE_MAP_SIZE][MAZE_MAP_SIZE];
+static uint16_t visit_step = 0U;
 
 static Cell_t path_stack[MAZE_MAP_SIZE * MAZE_MAP_SIZE];
 static int16_t stack_top = -1;
@@ -77,6 +79,17 @@ static uint8_t wall_bit_for_heading(Heading_t dir)
 static Heading_t opposite_heading(Heading_t dir)
 {
 	return (Heading_t)((dir + 2) & 0x3);
+}
+
+static const char* heading_to_string(Heading_t dir)
+{
+	switch (dir) {
+		case HEADING_NORTH: return "NORTH";
+		case HEADING_EAST: return "EAST";
+		case HEADING_SOUTH: return "SOUTH";
+		case HEADING_WEST: return "WEST";
+		default: return "UNKNOWN";
+	}
 }
 
 static uint8_t in_bounds(int8_t x, int8_t y)
@@ -167,6 +180,14 @@ static void schedule_move_to_heading(Heading_t desired_heading, int8_t next_x, i
 	target_x = next_x;
 	target_y = next_y;
 
+	char nav_msg[96];
+	(void)snprintf(nav_msg, sizeof(nav_msg), "PLAN: from (%d,%d) heading %s -> target (%d,%d) with relative move %s\r\n",
+		current_x, current_y, heading_to_string(heading), next_x, next_y,
+		(desired_heading == heading) ? "FORWARD" :
+		((desired_heading == (Heading_t)((heading + 1) & 0x3)) ? "RIGHT" :
+		((desired_heading == (Heading_t)((heading + 3) & 0x3)) ? "LEFT" : "BACK")));
+	transmit_text(nav_msg);
+
 	if (diff == 0U) {
 		action_state = ACTION_DELAY;
 		next_action_state = ACTION_FORWARD;
@@ -209,6 +230,12 @@ static void finish_mapping(void)
 	transmit_text("\r\nMAZE_MAP_BEGIN\r\n");
 	transmit_text(text);
 	transmit_text("MAZE_MAP_END\r\n");
+
+	len = maze_map_export_visited_text(text, (uint16_t)sizeof(text));
+	(void)len;
+	transmit_text("\r\nMAZE_VISITED_BEGIN\r\n");
+	transmit_text(text);
+	transmit_text("MAZE_VISITED_END\r\n");
 }
 
 void maze_map_init(UART_HandleTypeDef* huart)
@@ -221,6 +248,8 @@ void maze_map_start(void)
 {
 	memset(maze, 0, sizeof(maze));
 	memset(visited, 0, sizeof(visited));
+	memset(visit_order, 0, sizeof(visit_order));
+	visit_step = 0U;
 
 	stack_top = -1;
 	current_x = 0;
@@ -309,6 +338,39 @@ uint16_t maze_map_export_text(char* out, uint16_t out_size)
 	return index;
 }
 
+uint16_t maze_map_export_visited_text(char* out, uint16_t out_size)
+{
+	uint8_t row;
+	uint8_t col;
+	int written;
+	uint16_t index = 0U;
+
+	if ((out == NULL) || (out_size == 0U)) return 0U;
+	out[0] = '\0';
+
+	for (row = 0U; row < MAZE_MAP_SIZE; row++) {
+		for (col = 0U; col < MAZE_MAP_SIZE; col++) {
+			written = snprintf(&out[index], (size_t)(out_size - index), "%u%s",
+							visit_order[row][col],
+							(col == (MAZE_MAP_SIZE - 1U)) ? "" : " ");
+			if ((written < 0) || ((uint16_t)written >= (out_size - index))) {
+				out[out_size - 1U] = '\0';
+				return index;
+			}
+			index += (uint16_t)written;
+		}
+
+		written = snprintf(&out[index], (size_t)(out_size - index), "\n");
+		if ((written < 0) || ((uint16_t)written >= (out_size - index))) {
+			out[out_size - 1U] = '\0';
+			return index;
+		}
+		index += (uint16_t)written;
+	}
+
+	return index;
+}
+
 void maze_map_tick(void)
 {
 	uint8_t i;
@@ -373,12 +435,27 @@ void maze_map_tick(void)
 	}
 
 	if (action_state == ACTION_FINISH_FORWARD) {
+		int8_t from_x = current_x;
+		int8_t from_y = current_y;
+
 		current_x = target_x;
 		current_y = target_y;
 		action_state = ACTION_IDLE;
+
+		char move_msg[96];
+		snprintf(move_msg, sizeof(move_msg), "MOVED: (%d,%d) -> (%d,%d), heading %d\r\n",
+			 from_x, from_y, current_x, current_y, heading);
+		transmit_text(move_msg);
 	}
 
-	visited[current_y][current_x] = 1U;
+	if (visited[current_y][current_x] == 0U) {
+		visit_step++;
+		visited[current_y][current_x] = 1U;
+		visit_order[current_y][current_x] = (uint8_t)visit_step;
+		char pos_msg[64];
+		snprintf(pos_msg, sizeof(pos_msg), "VISIT %u: (%d,%d)\r\n", visit_step, current_x, current_y);
+		transmit_text(pos_msg);
+	}
 	mark_local_walls();
 
 	for (i = 0U; i < 4U; i++) {
@@ -396,11 +473,17 @@ void maze_map_tick(void)
 
 	if (found_next) {
 		stack_push(current_x, current_y);
+		char next_msg[96];
+		(void)snprintf(next_msg, sizeof(next_msg), "NEXT: from (%d,%d) -> (%d,%d), direction %d\r\n", current_x, current_y, nx, ny, dir);
+		transmit_text(next_msg);
 		schedule_move_to_heading(dir, nx, ny);
 		return;
 	}
 
 	if (stack_pop(&back_cell)) {
+		char back_msg[96];
+		(void)snprintf(back_msg, sizeof(back_msg), "BACKTRACK: from (%d,%d) -> (%d,%d)\r\n", current_x, current_y, back_cell.x, back_cell.y);
+		transmit_text(back_msg);
 		int8_t back_dx = back_cell.x - current_x;
 		int8_t back_dy = back_cell.y - current_y;
 		Heading_t back_dir = heading;

@@ -25,5 +25,6 @@ uint8_t maze_map_is_done(void);
 const uint8_t (*maze_map_get_matrix(void))[MAZE_MAP_SIZE];
 void maze_map_copy_int_matrix(int out[MAZE_MAP_SIZE][MAZE_MAP_SIZE]);
 uint16_t maze_map_export_text(char* out, uint16_t out_size);
+uint16_t maze_map_export_visited_text(char* out, uint16_t out_size);
 
 #endif /* __MAZE_MAP_H__ */

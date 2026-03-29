@@ -98,7 +98,7 @@ void motor_init(TIM_HandleTypeDef* tim3)
 void motor_set_m1(MotorDirection_t direction, uint16_t speed)
 {
   /* Apply 10% power boost to M1 (left motor) to compensate for speed difference */
-  uint16_t boosted_speed = (speed * 105U) / 100U;
+  uint16_t boosted_speed = (speed * 111U) / 100U;
   if (boosted_speed > MOTOR_PWM_MAX) boosted_speed = MOTOR_PWM_MAX;
 
   switch(direction) {
