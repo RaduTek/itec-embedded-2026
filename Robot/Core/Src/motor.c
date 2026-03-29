@@ -7,67 +7,29 @@
 #define MOTOR_1CELL_MS      250U   /* ms to travel one cell forward/backward */
 #define MOTOR_90DEG_MS      175U   /* ms to rotate 90 degrees */
 #define MOTOR_NUDGE_MS       60U   /* ms for a small correction nudge */
-#define DELAY_TICKS 10U
+#define DELAY_TICKS          10U
 
 /* Autonomous mode thresholds (cm) */
 #define AUTO_FRONT_WALL_CM   20U   /* stop and decide if front closer than this */
 #define AUTO_SIDE_WALL_CM     8U   /* nudge away if side closer than this */
 #define AUTO_BOTH_BLOCKED_CM 15U   /* consider a side "blocked" for path selection */
 
+/* LED proximity threshold (cm) */
+#define SENSOR_NEAR_CM       12U   /* LED ON when obstacle is closer than this */
+
 /* Sensor indices */
 #define SONAR_FRONT  1
 #define SONAR_BACK   0
-#define SONAR_LEFT   3
-#define SONAR_RIGHT  2
-
+#define SONAR_LEFT   2
+#define SONAR_RIGHT  3
 
 static inline uint16_t percent_speed(uint8_t percent)
 {
-    return (uint16_t)((uint32_t)percent * MOTOR_PWM_MAX / 100U);
+  return (uint16_t)((uint32_t)percent * MOTOR_PWM_MAX / 100U);
 }
 
 static Motor_t m1, m2;
 static TIM_HandleTypeDef* tim_ptr;
-
-/* --- Motion LEDs (1-hot encoding on STM32F4-Discovery LEDs) ---
- * Forward  -> RED   (LD5)
- * Right    -> BLUE  (LD6)
- * Left     -> GREEN (LD4)
- * Backward -> ORANGE (LD3, used as "white" fallback)
- */
-typedef enum {
-  MOTOR_LED_IDLE = 0,
-  MOTOR_LED_FORWARD,
-  MOTOR_LED_RIGHT,
-  MOTOR_LED_LEFT,
-  MOTOR_LED_BACKWARD
-} MotorLedState_t;
-
-static void motor_led_set(MotorLedState_t state)
-{
-  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
-
-  switch (state) {
-    case MOTOR_LED_FORWARD:
-      HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_SET); /* red */
-      break;
-    case MOTOR_LED_RIGHT:
-      HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET); /* blue */
-      break;
-    case MOTOR_LED_LEFT:
-      HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET); /* green */
-      break;
-    case MOTOR_LED_BACKWARD:
-      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET); /* orange fallback */
-      break;
-    case MOTOR_LED_IDLE:
-    default:
-      break;
-  }
-}
 
 /* --- Timed move state --- */
 static uint8_t  timed_move_active = 0;
@@ -76,8 +38,26 @@ static uint32_t timed_move_dur    = 0;
 
 /* --- Autonomous mode state --- */
 static uint8_t  auto_mode = 0;
-static uint8_t delay_counter = 0;
+static uint8_t  delay_counter = 0;
 
+/* Sensor LED mapping:
+ * Front sensor -> RED    (LD5)
+ * Back sensor  -> BLUE   (LD6)
+ * Left sensor  -> GREEN  (LD4)
+ * Right sensor -> ORANGE (LD3)
+ */
+static void motor_sensor_led_update(void)
+{
+  uint16_t front = sonar_get_distance(SONAR_FRONT);
+  uint16_t back  = sonar_get_distance(SONAR_BACK);
+  uint16_t left  = sonar_get_distance(SONAR_LEFT);
+  uint16_t right = sonar_get_distance(SONAR_RIGHT);
+
+  HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, (front <= SENSOR_NEAR_CM) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, (back  <= SENSOR_NEAR_CM) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, (left  <= SENSOR_NEAR_CM) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, (right <= SENSOR_NEAR_CM) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
 
 void motor_init(TIM_HandleTypeDef* tim3)
 {
@@ -108,7 +88,11 @@ void motor_init(TIM_HandleTypeDef* tim3)
   __HAL_TIM_SET_COMPARE(tim3, TIM_CHANNEL_3, 0);
   __HAL_TIM_SET_COMPARE(tim3, TIM_CHANNEL_4, 0);
 
-  motor_led_set(MOTOR_LED_IDLE);
+  /* Keep LEDs off until sonar starts producing meaningful readings */
+  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
 }
 
 void motor_set_m1(MotorDirection_t direction, uint16_t speed)
@@ -162,7 +146,6 @@ static void timed_move_start_fn(uint32_t duration_ms)
 
 void motor_forward_1cell(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_FORWARD);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
   timed_move_start_fn(MOTOR_1CELL_MS);
@@ -170,7 +153,6 @@ void motor_forward_1cell(uint16_t speed)
 
 void motor_backward_1cell(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_BACKWARD);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
   timed_move_start_fn(MOTOR_1CELL_MS);
@@ -178,7 +160,6 @@ void motor_backward_1cell(uint16_t speed)
 
 void motor_turn_left_90(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_LEFT);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
   timed_move_start_fn(MOTOR_90DEG_MS);
@@ -186,7 +167,6 @@ void motor_turn_left_90(uint16_t speed)
 
 void motor_turn_right_90(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_RIGHT);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
   timed_move_start_fn(MOTOR_90DEG_MS);
@@ -196,6 +176,10 @@ void motor_turn_right_90(uint16_t speed)
 void motor_tick(void)
 {
   if (delay_counter > 0) delay_counter--;
+
+  /* Update sensor LEDs continuously */
+  motor_sensor_led_update();
+
   if (!timed_move_active) return;
 
   if ((HAL_GetTick() - timed_move_start) >= timed_move_dur) {
@@ -243,7 +227,7 @@ void motor_auto_tick(void)
       motor_turn_right_90(turn_speed);
 
     } else {
-      /* All three sides blocked: back up */
+      /* All three sides blocked: turn around */
       delay_counter = DELAY_TICKS;
       motor_turn_right_90(turn_speed);
       delay_counter = DELAY_TICKS;
@@ -255,13 +239,11 @@ void motor_auto_tick(void)
 
   /* --- Priority 2: side wall correction --- */
 //  if (dist_left < AUTO_SIDE_WALL_CM) {
-//    /* Too close to left wall: nudge right */
 //    motor_nudge_right(turn_speed);
 //    return;
 //  }
 //
 //  if (dist_right < AUTO_SIDE_WALL_CM) {
-//    /* Too close to right wall: nudge left */
 //    motor_nudge_left(turn_speed);
 //    return;
 //  }
@@ -285,28 +267,24 @@ uint8_t motor_auto_is_on(void)
 
 void motor_forward(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_FORWARD);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
 }
 
 void motor_backward(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_BACKWARD);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
 }
 
 void motor_turn_left(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_LEFT);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
 }
 
 void motor_turn_right(uint16_t speed)
 {
-  motor_led_set(MOTOR_LED_RIGHT);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
 }
@@ -315,7 +293,7 @@ void motor_stop(void)
 {
   motor_set_m1(MOTOR_STOP, 0);
   motor_set_m2(MOTOR_STOP, 0);
-  motor_led_set(MOTOR_LED_IDLE);
+  motor_sensor_led_update();
 }
 
 /* --- USART command handler --- */
@@ -374,6 +352,7 @@ void motor_usart_command(uint8_t cmd)
       delay_counter = DELAY_TICKS;
       if (!timed_move_active) motor_turn_right_90(turn_speed);
       break;
-    default: break;
+    default:
+      break;
   }
 }

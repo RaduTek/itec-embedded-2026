@@ -25,7 +25,7 @@
 #include <stdio.h>
 #include "sonar.h"
 #include "motor.h"
-#include "maze_map.h"
+#include "maze_map_manual.h"
 
 /* USER CODE END Includes */
 
@@ -125,8 +125,8 @@ int main(void)
   // Enable UART receive interrupt for remote control
   HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
 
-  // Initialize mapper; start only when 'm' command is received
-  maze_map_init(&huart2);
+  // Initialize manual mapper controlled via UART 'n' key
+  maze_map_manual_init(&huart2);
 
   /* USER CODE END 2 */
 
@@ -136,7 +136,6 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  motor_tick();
-    maze_map_tick();
     /* USER CODE BEGIN 3 */
     
     // Print distances every second
@@ -575,12 +574,11 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2) {
-    if (cmd_buffer == 'm' || cmd_buffer == 'M') {
-      maze_map_start();
-    } else if (cmd_buffer == 'q' || cmd_buffer == 'Q') {
-      maze_map_stop();
-      motor_stop();
-    } else if (!maze_map_is_running()) {
+    if (cmd_buffer == 'n' || cmd_buffer == 'N') {
+      maze_map_manual_scan_next();
+    } else if (cmd_buffer == 'r' || cmd_buffer == 'R') {
+      maze_map_manual_reset();
+    } else {
       motor_usart_command(cmd_buffer);
     }
     HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
