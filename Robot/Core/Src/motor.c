@@ -6,13 +6,13 @@
 /* Timed move durations */
 #define MOTOR_1CELL_MS      250U   /* ms to travel one cell forward/backward */
 #define MOTOR_90DEG_MS      175U   /* ms to rotate 90 degrees */
-#define MOTOR_NUDGE_MS       15U   /* ms for a small correction nudge */
-#define DELAY_TICKS          20U
+#define MOTOR_NUDGE_MS       4U   /* ms for a small correction nudge */
+#define DELAY_TICKS          15U
 
 /* Autonomous mode thresholds (cm) */
 #define AUTO_FRONT_WALL_CM   20U   /* stop and decide if front closer than this */
-#define AUTO_SIDE_WALL_CM    5U   /* nudge away if side closer than this */
-#define AUTO_BOTH_BLOCKED_CM 5U   /* consider a side "blocked" for path selection */
+#define AUTO_SIDE_WALL_CM    8U   /* nudge away if side closer than this */
+#define AUTO_BOTH_BLOCKED_CM 7U   /* consider a side "blocked" for path selection */
 
 /* LED proximity threshold (cm) */
 #define SENSOR_NEAR_CM       12U   /* LED ON when obstacle is closer than this */
@@ -97,6 +97,10 @@ void motor_init(TIM_HandleTypeDef* tim3)
 
 void motor_set_m1(MotorDirection_t direction, uint16_t speed)
 {
+  /* Apply 10% power boost to M1 (left motor) to compensate for speed difference */
+  uint16_t boosted_speed = (speed * 105U) / 100U;
+  if (boosted_speed > MOTOR_PWM_MAX) boosted_speed = MOTOR_PWM_MAX;
+
   switch(direction) {
     case MOTOR_FORWARD:
       HAL_GPIO_WritePin(m1.direction_port_a, m1.direction_pin_a, GPIO_PIN_SET);
@@ -112,7 +116,7 @@ void motor_set_m1(MotorDirection_t direction, uint16_t speed)
       HAL_GPIO_WritePin(m1.direction_port_b, m1.direction_pin_b, GPIO_PIN_RESET);
       break;
   }
-  __HAL_TIM_SET_COMPARE(m1.timer, m1.channel, speed);
+  __HAL_TIM_SET_COMPARE(m1.timer, m1.channel, boosted_speed);
 }
 
 void motor_set_m2(MotorDirection_t direction, uint16_t speed)
@@ -210,7 +214,7 @@ void motor_auto_tick(void)
   if (delay_counter > 0) return;
 
   uint16_t speed      = percent_speed(39);
-  uint16_t turn_speed = percent_speed(39);
+  uint16_t turn_speed = percent_speed(38);  /* Reduced from 39 to 25 for slower rotations */
 
   uint16_t dist_front = sonar_get_distance(SONAR_FRONT);
   uint16_t dist_left  = sonar_get_distance(SONAR_LEFT);
