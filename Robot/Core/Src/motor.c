@@ -6,22 +6,22 @@
 /* Timed move durations */
 #define MOTOR_1CELL_MS      250U   /* ms to travel one cell forward/backward */
 #define MOTOR_90DEG_MS      175U   /* ms to rotate 90 degrees */
-#define MOTOR_NUDGE_MS       60U   /* ms for a small correction nudge */
-#define DELAY_TICKS          10U
+#define MOTOR_NUDGE_MS       15U   /* ms for a small correction nudge */
+#define DELAY_TICKS          20U
 
 /* Autonomous mode thresholds (cm) */
 #define AUTO_FRONT_WALL_CM   20U   /* stop and decide if front closer than this */
-#define AUTO_SIDE_WALL_CM     8U   /* nudge away if side closer than this */
-#define AUTO_BOTH_BLOCKED_CM 15U   /* consider a side "blocked" for path selection */
+#define AUTO_SIDE_WALL_CM    5U   /* nudge away if side closer than this */
+#define AUTO_BOTH_BLOCKED_CM 5U   /* consider a side "blocked" for path selection */
 
 /* LED proximity threshold (cm) */
 #define SENSOR_NEAR_CM       12U   /* LED ON when obstacle is closer than this */
 
 /* Sensor indices */
-#define SONAR_FRONT  1
-#define SONAR_BACK   0
-#define SONAR_LEFT   2
-#define SONAR_RIGHT  3
+#define SONAR_FRONT  0
+#define SONAR_BACK   1
+#define SONAR_LEFT   3
+#define SONAR_RIGHT  2
 
 static inline uint16_t percent_speed(uint8_t percent)
 {
@@ -172,6 +172,20 @@ void motor_turn_right_90(uint16_t speed)
   timed_move_start_fn(MOTOR_90DEG_MS);
 }
 
+void motor_nudge_left(uint16_t speed)
+{
+  motor_set_m1(MOTOR_BACKWARD, speed);
+  motor_set_m2(MOTOR_FORWARD, speed);
+  timed_move_start_fn(MOTOR_NUDGE_MS);
+}
+
+void motor_nudge_right(uint16_t speed)
+{
+  motor_set_m1(MOTOR_FORWARD, speed);
+  motor_set_m2(MOTOR_BACKWARD, speed);
+  timed_move_start_fn(MOTOR_NUDGE_MS);
+}
+
 /* --- Main tick: stops timed moves when duration expires --- */
 void motor_tick(void)
 {
@@ -201,6 +215,7 @@ void motor_auto_tick(void)
   uint16_t dist_front = sonar_get_distance(SONAR_FRONT);
   uint16_t dist_left  = sonar_get_distance(SONAR_LEFT);
   uint16_t dist_right = sonar_get_distance(SONAR_RIGHT);
+  uint16_t dist_back  = sonar_get_distance(SONAR_BACK);
 
   /* --- Priority 1: front wall approaching --- */
   if (dist_front < AUTO_FRONT_WALL_CM) {
@@ -227,26 +242,33 @@ void motor_auto_tick(void)
       motor_turn_right_90(turn_speed);
 
     } else {
-      /* All three sides blocked: turn around */
-      delay_counter = DELAY_TICKS;
-      motor_turn_right_90(turn_speed);
-      delay_counter = DELAY_TICKS;
-      motor_turn_right_90(turn_speed);
+      /* All three sides blocked: check back before turning around */
+      if (dist_back >= AUTO_FRONT_WALL_CM) {
+        delay_counter = DELAY_TICKS;
+        motor_turn_right_90(turn_speed);
+        delay_counter = DELAY_TICKS;
+        motor_turn_right_90(turn_speed);
+      } else {
+        /* Back also blocked: stop autonomous mode */
+        motor_stop();
+        auto_mode = 0;
+      }
     }
 
     return;
   }
 
   /* --- Priority 2: side wall correction --- */
-//  if (dist_left < AUTO_SIDE_WALL_CM) {
-//    motor_nudge_right(turn_speed);
-//    return;
-//  }
-//
-//  if (dist_right < AUTO_SIDE_WALL_CM) {
-//    motor_nudge_left(turn_speed);
-//    return;
-//  }
+  // Disabled: prevents free movement in corridors with parallel walls
+  // if (dist_left < AUTO_SIDE_WALL_CM) {
+  //   motor_nudge_right(turn_speed);
+  //   return;
+  // }
+  //
+  // if (dist_right < AUTO_SIDE_WALL_CM) {
+  //   motor_nudge_left(turn_speed);
+  //   return;
+  // }
 
   /* --- Priority 3: path is clear, move forward --- */
   delay_counter = DELAY_TICKS;
@@ -308,6 +330,9 @@ void motor_usart_command(uint8_t cmd)
     case 'p': case 'P':
       auto_mode = !auto_mode;
       if (!auto_mode) { motor_stop(); timed_move_active = 0; }
+      break;
+    case 'm': case 'M':
+      auto_mode = 1;
       break;
 
     /* All manual movement commands below disable auto mode first */

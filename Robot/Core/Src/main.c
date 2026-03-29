@@ -136,6 +136,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  motor_tick();
+	  motor_auto_tick();
     /* USER CODE BEGIN 3 */
     
     // Print distances every second
@@ -150,7 +151,7 @@ int main(void)
       
       uint8_t msg[64];
       int len = sprintf((char*)msg, "Sonar: F=%dcm B=%dcm L=%dcm R=%dcm\r\n", 
-        dist1, dist0, dist2, dist3);
+        dist0, dist1, dist3, dist2);
       HAL_UART_Transmit(&huart2, msg, len, HAL_MAX_DELAY);
     }
     

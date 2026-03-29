@@ -39,6 +39,8 @@ void motor_forward_1cell(uint16_t speed);
 void motor_backward_1cell(uint16_t speed);
 void motor_turn_left_90(uint16_t speed);
 void motor_turn_right_90(uint16_t speed);
+void motor_nudge_left(uint16_t speed);
+void motor_nudge_right(uint16_t speed);
 
 /* Call both of these every iteration of your main loop */
 void motor_tick(void);
