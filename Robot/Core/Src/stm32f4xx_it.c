@@ -267,20 +267,20 @@ void EXTI15_10_IRQHandler(void)
     sonar_echo_callback(3, edge);
   }
 
-  // PE13 - ECHO_F (Front sensor, index 0)
+  // PE13 - ECHO_F (Front sensor, index 1)
   if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_13) != RESET)
   {
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
     uint8_t edge = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_13);
-    sonar_echo_callback(0, edge);
+    sonar_echo_callback(1, edge);
   }
 
-  // PE14 - ECHO_B (Back sensor, index 1)
+  // PE14 - ECHO_B (Back sensor, index 0)
   if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_14) != RESET)
   {
     __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_14);
     uint8_t edge = HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_14);
-    sonar_echo_callback(1, edge);
+    sonar_echo_callback(0, edge);
   }
 }
 

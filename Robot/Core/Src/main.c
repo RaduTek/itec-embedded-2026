@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include "sonar.h"
 #include "motor.h"
+#include "maze_map.h"
 
 /* USER CODE END Includes */
 
@@ -124,6 +125,9 @@ int main(void)
   // Enable UART receive interrupt for remote control
   HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
 
+  // Initialize mapper; start only when 'm' command is received
+  maze_map_init(&huart2);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -132,7 +136,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  motor_tick();
-	  motor_auto_tick();  // autonomous decision making
+    maze_map_tick();
     /* USER CODE BEGIN 3 */
     
     // Print distances every second
@@ -147,7 +151,7 @@ int main(void)
       
       uint8_t msg[64];
       int len = sprintf((char*)msg, "Sonar: F=%dcm B=%dcm L=%dcm R=%dcm\r\n", 
-        dist0, dist1, dist2, dist3);
+        dist1, dist0, dist2, dist3);
       HAL_UART_Transmit(&huart2, msg, len, HAL_MAX_DELAY);
     }
     
@@ -571,7 +575,14 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2) {
-    motor_usart_command(cmd_buffer);
+    if (cmd_buffer == 'm' || cmd_buffer == 'M') {
+      maze_map_start();
+    } else if (cmd_buffer == 'q' || cmd_buffer == 'Q') {
+      maze_map_stop();
+      motor_stop();
+    } else if (!maze_map_is_running()) {
+      motor_usart_command(cmd_buffer);
+    }
     HAL_UART_Receive_IT(&huart2, (uint8_t*)&cmd_buffer, 1);
   }
 }

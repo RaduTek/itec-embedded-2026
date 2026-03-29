@@ -28,6 +28,46 @@ static inline uint16_t percent_speed(uint8_t percent)
 static Motor_t m1, m2;
 static TIM_HandleTypeDef* tim_ptr;
 
+/* --- Motion LEDs (1-hot encoding on STM32F4-Discovery LEDs) ---
+ * Forward  -> RED   (LD5)
+ * Right    -> BLUE  (LD6)
+ * Left     -> GREEN (LD4)
+ * Backward -> ORANGE (LD3, used as "white" fallback)
+ */
+typedef enum {
+  MOTOR_LED_IDLE = 0,
+  MOTOR_LED_FORWARD,
+  MOTOR_LED_RIGHT,
+  MOTOR_LED_LEFT,
+  MOTOR_LED_BACKWARD
+} MotorLedState_t;
+
+static void motor_led_set(MotorLedState_t state)
+{
+  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
+
+  switch (state) {
+    case MOTOR_LED_FORWARD:
+      HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_SET); /* red */
+      break;
+    case MOTOR_LED_RIGHT:
+      HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET); /* blue */
+      break;
+    case MOTOR_LED_LEFT:
+      HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET); /* green */
+      break;
+    case MOTOR_LED_BACKWARD:
+      HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET); /* orange fallback */
+      break;
+    case MOTOR_LED_IDLE:
+    default:
+      break;
+  }
+}
+
 /* --- Timed move state --- */
 static uint8_t  timed_move_active = 0;
 static uint32_t timed_move_start  = 0;
@@ -65,6 +105,8 @@ void motor_init(TIM_HandleTypeDef* tim3)
 
   __HAL_TIM_SET_COMPARE(tim3, TIM_CHANNEL_3, 0);
   __HAL_TIM_SET_COMPARE(tim3, TIM_CHANNEL_4, 0);
+
+  motor_led_set(MOTOR_LED_IDLE);
 }
 
 void motor_set_m1(MotorDirection_t direction, uint16_t speed)
@@ -118,6 +160,7 @@ static void timed_move_start_fn(uint32_t duration_ms)
 
 void motor_forward_1cell(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_FORWARD);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
   timed_move_start_fn(MOTOR_1CELL_MS);
@@ -125,6 +168,7 @@ void motor_forward_1cell(uint16_t speed)
 
 void motor_backward_1cell(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_BACKWARD);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
   timed_move_start_fn(MOTOR_1CELL_MS);
@@ -132,6 +176,7 @@ void motor_backward_1cell(uint16_t speed)
 
 void motor_turn_left_90(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_LEFT);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
   timed_move_start_fn(MOTOR_90DEG_MS);
@@ -139,6 +184,7 @@ void motor_turn_left_90(uint16_t speed)
 
 void motor_turn_right_90(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_RIGHT);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
   timed_move_start_fn(MOTOR_90DEG_MS);
@@ -205,7 +251,8 @@ void motor_auto_tick(void)
 
     } else {
       /* All three sides blocked: back up */
-      motor_backward_1cell(speed);
+      motor_turn_right_90(turn_speed);
+      motor_turn_right_90(turn_speed);
     }
 
     return;
@@ -242,24 +289,28 @@ uint8_t motor_auto_is_on(void)
 
 void motor_forward(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_FORWARD);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
 }
 
 void motor_backward(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_BACKWARD);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
 }
 
 void motor_turn_left(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_LEFT);
   motor_set_m1(MOTOR_BACKWARD, speed);
   motor_set_m2(MOTOR_FORWARD, speed);
 }
 
 void motor_turn_right(uint16_t speed)
 {
+  motor_led_set(MOTOR_LED_RIGHT);
   motor_set_m1(MOTOR_FORWARD, speed);
   motor_set_m2(MOTOR_BACKWARD, speed);
 }
@@ -268,6 +319,7 @@ void motor_stop(void)
 {
   motor_set_m1(MOTOR_STOP, 0);
   motor_set_m2(MOTOR_STOP, 0);
+  motor_led_set(MOTOR_LED_IDLE);
 }
 
 /* --- USART command handler --- */
