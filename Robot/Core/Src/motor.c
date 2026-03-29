@@ -4,9 +4,10 @@
 #define MOTOR_PWM_MAX  65535U
 
 /* Timed move durations */
-#define MOTOR_1CELL_MS      150U   /* ms to travel one cell forward/backward */
-#define MOTOR_90DEG_MS      100U   /* ms to rotate 90 degrees */
+#define MOTOR_1CELL_MS      250U   /* ms to travel one cell forward/backward */
+#define MOTOR_90DEG_MS      175U   /* ms to rotate 90 degrees */
 #define MOTOR_NUDGE_MS       60U   /* ms for a small correction nudge */
+#define DELAY_TICKS 10U
 
 /* Autonomous mode thresholds (cm) */
 #define AUTO_FRONT_WALL_CM   20U   /* stop and decide if front closer than this */
@@ -75,6 +76,7 @@ static uint32_t timed_move_dur    = 0;
 
 /* --- Autonomous mode state --- */
 static uint8_t  auto_mode = 0;
+static uint8_t delay_counter = 0;
 
 
 void motor_init(TIM_HandleTypeDef* tim3)
@@ -190,25 +192,10 @@ void motor_turn_right_90(uint16_t speed)
   timed_move_start_fn(MOTOR_90DEG_MS);
 }
 
-static void motor_nudge_left(uint16_t speed)
-{
-  /* Brief turn left to move away from right wall */
-  motor_set_m1(MOTOR_BACKWARD, speed);
-  motor_set_m2(MOTOR_FORWARD, speed);
-  timed_move_start_fn(MOTOR_NUDGE_MS);
-}
-
-static void motor_nudge_right(uint16_t speed)
-{
-  /* Brief turn right to move away from left wall */
-  motor_set_m1(MOTOR_FORWARD, speed);
-  motor_set_m2(MOTOR_BACKWARD, speed);
-  timed_move_start_fn(MOTOR_NUDGE_MS);
-}
-
 /* --- Main tick: stops timed moves when duration expires --- */
 void motor_tick(void)
 {
+  if (delay_counter > 0) delay_counter--;
   if (!timed_move_active) return;
 
   if ((HAL_GetTick() - timed_move_start) >= timed_move_dur) {
@@ -222,6 +209,7 @@ void motor_auto_tick(void)
 {
   if (!auto_mode)        return;  /* autonomous mode off */
   if (timed_move_active) return;  /* wait for current move to finish */
+  if (delay_counter > 0) return;
 
   uint16_t speed      = percent_speed(39);
   uint16_t turn_speed = percent_speed(39);
@@ -238,20 +226,27 @@ void motor_auto_tick(void)
 
     if (left_open && right_open) {
       /* Both open: pick the side with more space */
-      if (dist_left >= dist_right)
+      if (dist_left >= dist_right) {
+        delay_counter = DELAY_TICKS;
         motor_turn_left_90(turn_speed);
-      else
+      } else {
+        delay_counter = DELAY_TICKS;
         motor_turn_right_90(turn_speed);
+      }
 
     } else if (left_open) {
+      delay_counter = DELAY_TICKS;
       motor_turn_left_90(turn_speed);
 
     } else if (right_open) {
+      delay_counter = DELAY_TICKS;
       motor_turn_right_90(turn_speed);
 
     } else {
       /* All three sides blocked: back up */
+      delay_counter = DELAY_TICKS;
       motor_turn_right_90(turn_speed);
+      delay_counter = DELAY_TICKS;
       motor_turn_right_90(turn_speed);
     }
 
@@ -272,6 +267,7 @@ void motor_auto_tick(void)
 //  }
 
   /* --- Priority 3: path is clear, move forward --- */
+  delay_counter = DELAY_TICKS;
   motor_forward_1cell(speed);
 }
 
@@ -325,6 +321,8 @@ void motor_stop(void)
 /* --- USART command handler --- */
 void motor_usart_command(uint8_t cmd)
 {
+  if (delay_counter > 0) return;
+
   uint16_t speed      = percent_speed(45);
   uint16_t turn_speed = percent_speed(40);
 
@@ -358,18 +356,22 @@ void motor_usart_command(uint8_t cmd)
       break;
     case 't': case 'T':
       auto_mode = 0;
+      delay_counter = DELAY_TICKS;
       if (!timed_move_active) motor_forward_1cell(speed);
       break;
     case 'g': case 'G':
       auto_mode = 0;
+      delay_counter = DELAY_TICKS;
       if (!timed_move_active) motor_backward_1cell(speed);
       break;
     case 'f': case 'F':
       auto_mode = 0;
+      delay_counter = DELAY_TICKS;
       if (!timed_move_active) motor_turn_left_90(turn_speed);
       break;
     case 'h': case 'H':
       auto_mode = 0;
+      delay_counter = DELAY_TICKS;
       if (!timed_move_active) motor_turn_right_90(turn_speed);
       break;
     default: break;

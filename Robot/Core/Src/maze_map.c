@@ -8,6 +8,7 @@
 #include "maze_solve.h"
 
 #define MAP_SPEED_PWM          26214U
+#define DELAY_TICKS 10U
 #define WALL_THRESHOLD_CM      9U
 
 /* User-requested sensor indexing */
@@ -27,13 +28,6 @@ typedef enum {
 	HEADING_SOUTH = 2,
 	HEADING_WEST  = 3
 } Heading_t;
-
-typedef enum {
-	ACTION_IDLE = 0,
-	ACTION_TURN,
-	ACTION_FORWARD,
-	ACTION_FINISH_FORWARD
-} ActionState_t;
 
 typedef struct {
 	int8_t x;
@@ -61,6 +55,10 @@ static uint8_t run_done = 0U;
 static ActionState_t action_state = ACTION_IDLE;
 static uint8_t turn_steps_remaining = 0U;
 static uint8_t turn_right = 1U;
+
+static uint8_t delay_counter = 0;
+static ActionState_t next_action_state = ACTION_IDLE;
+static uint8_t delay_done = 0;
 
 static const int8_t dx[4] = { 0, 1, 0, -1 };
 static const int8_t dy[4] = { -1, 0, 1, 0 };
@@ -170,11 +168,17 @@ static void schedule_move_to_heading(Heading_t desired_heading, int8_t next_x, i
 	target_y = next_y;
 
 	if (diff == 0U) {
-		action_state = ACTION_FORWARD;
+		action_state = ACTION_DELAY;
+		next_action_state = ACTION_FORWARD;
+		delay_counter = DELAY_TICKS;
+		delay_done = 0;
 		return;
 	}
 
-	action_state = ACTION_TURN;
+	action_state = ACTION_DELAY;
+	next_action_state = ACTION_TURN;
+	delay_counter = DELAY_TICKS;
+	delay_done = 0;
 
 	if (diff == 1U) {
 		turn_right = 1U;
@@ -317,26 +321,55 @@ void maze_map_tick(void)
 	if (!run_enabled) return;
 	if (motor_is_busy()) return;
 
+	if (action_state == ACTION_DELAY) {
+		delay_counter--;
+		if (delay_counter == 0) {
+			action_state = next_action_state;
+		}
+		return;
+	}
+
 	if (action_state == ACTION_TURN) {
 		if (turn_steps_remaining > 0U) {
-			if (turn_right) {
-				motor_turn_right_90(MAP_SPEED_PWM);
-				heading = (Heading_t)((heading + 1) & 0x3);
+			if (!delay_done) {
+				action_state = ACTION_DELAY;
+				next_action_state = ACTION_TURN;
+				delay_counter = DELAY_TICKS;
+				delay_done = 1;
+				return;
 			} else {
-				motor_turn_left_90(MAP_SPEED_PWM);
-				heading = (Heading_t)((heading + 3) & 0x3);
+				delay_done = 0;
+				if (turn_right) {
+					motor_turn_right_90(MAP_SPEED_PWM);
+					heading = (Heading_t)((heading + 1) & 0x3);
+				} else {
+					motor_turn_left_90(MAP_SPEED_PWM);
+					heading = (Heading_t)((heading + 3) & 0x3);
+				}
+				turn_steps_remaining--;
+				return;
 			}
-			turn_steps_remaining--;
-			return;
 		}
 
-		action_state = ACTION_FORWARD;
+		action_state = ACTION_DELAY;
+		next_action_state = ACTION_FORWARD;
+		delay_counter = DELAY_TICKS;
+		delay_done = 0;
 	}
 
 	if (action_state == ACTION_FORWARD) {
-		motor_forward_1cell(MAP_SPEED_PWM);
-		action_state = ACTION_FINISH_FORWARD;
-		return;
+		if (!delay_done) {
+			action_state = ACTION_DELAY;
+			next_action_state = ACTION_FORWARD;
+			delay_counter = DELAY_TICKS;
+			delay_done = 1;
+			return;
+		} else {
+			delay_done = 0;
+			motor_forward_1cell(MAP_SPEED_PWM);
+			action_state = ACTION_FINISH_FORWARD;
+			return;
+		}
 	}
 
 	if (action_state == ACTION_FINISH_FORWARD) {

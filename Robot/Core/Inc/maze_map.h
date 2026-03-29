@@ -6,6 +6,14 @@
 
 #define MAZE_MAP_SIZE 10U
 
+typedef enum {
+  ACTION_IDLE = 0,
+  ACTION_DELAY,
+  ACTION_TURN,
+  ACTION_FORWARD,
+  ACTION_FINISH_FORWARD
+} ActionState_t;
+
 void maze_map_init(UART_HandleTypeDef* huart);
 void maze_map_start(void);
 void maze_map_stop(void);
